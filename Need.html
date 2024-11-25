@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agilent Technologies, Inc.</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        /* Previous styles remain the same */
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            overflow: hidden;
+        }
+        .circle {
+            fill: #007bff;
+            cursor: pointer;
+        }
+        svg {
+            width: 100vw;
+            height: 100vh;
+            transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: 0 0;
+        }
+        .svg-shrink {
+            transform: scale(0.15);
+        }
+        .title {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 2.5rem;
+            font-weight: bold;
+            padding-top: 20px;
+            letter-spacing: 0.5px;
+            transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .title.hide {
+            opacity: 0;
+        }
+        .message {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+            line-height: 1.2;
+            opacity: 1;
+        }
+        .message .line1,
+        .message .line2 {
+            display: block;
+            font-size: 2rem;
+            transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .message.fade {
+            opacity: 0;
+            transform: translateY(-50%) scale(0.5);
+        }
+        .message.fade .line1,
+        .message.fade .line2 {
+            font-size: 0.1rem;
+        }
+    </style>
+</head>
+<body>
+<div class="title">Agilent Technologies, Inc.</div>
+<div class="message">
+    <span class="line1">...bringing chaos</span>
+    <span class="line2">to order</span>
+</div>
+<script>
+const width = window.innerWidth;
+const height = window.innerHeight;
+const centerX = width / 2;
+const centerY = height / 2;
+let simulation;
+
+// Create SVG
+const svg = d3.select("body")
+    .append("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .on("click", (event) => {
+        if (event.target.tagName === 'svg') {
+            document.querySelector('.title').classList.add('hide');
+            svg.node().classList.add('svg-shrink');
+            setTimeout(() => {
+                window.location.href = "http://es-sb22-wc01.scs.agilent.com/Compat6.0/Compat6.1/index.html";
+            }, 2000);
+        }
+    });
+
+const data = [];
+const ringCount = 4;
+const nodesPerRing = 8;
+const minDimension = Math.min(width, height);
+const innerCircleRadius = minDimension * 0.035;
+const spacing = innerCircleRadius * 0.5;
+
+const firstRingRadius = (innerCircleRadius * 2) / (2 * Math.sin(Math.PI / nodesPerRing)) + innerCircleRadius;
+
+function getRingProperties(ringIndex) {
+    const nodeRadius = innerCircleRadius * Math.pow(0.66, ringIndex);
+    let ringRadius = firstRingRadius;
+    for (let i = 0; i < ringIndex; i++) {
+        ringRadius += (innerCircleRadius * Math.pow(0.66, i) * 2) + spacing;
+    }
+    return { nodeRadius, ringRadius };
+}
+
+// Initialize nodes at random positions
+for (let ring = 0; ring < ringCount; ring++) {
+    const { nodeRadius, ringRadius } = getRingProperties(ring);
+    for (let node = 0; node < nodesPerRing; node++) {
+        const angle = (node * 2 * Math.PI) / nodesPerRing;
+        const randomX = Math.random() * width;
+        const randomY = Math.random() * height;
+        data.push({
+            id: ring * nodesPerRing + node,
+            ring: ring,
+            nodeSize: nodeRadius,
+            originalX: centerX + ringRadius * Math.cos(angle),
+            originalY: centerY + ringRadius * Math.sin(angle),
+            x: randomX,
+            y: randomY,
+            currentX: randomX,
+            currentY: randomY
+        });
+    }
+}
+
+const nodes = svg.selectAll("circle")
+    .data(data)
+    .join("circle")
+    .attr("class", "circle")
+    .attr("r", d => d.nodeSize)
+    .attr("cx", d => d.x)
+    .attr("cy", d => d.y);
+
+function formPattern() {
+    const duration = 3000;
+    const startTime = Date.now();
+    
+    data.forEach(d => {
+        d.startX = d.currentX;
+        d.startY = d.currentY;
+    });
+
+    function animate() {
+        const currentTime = Date.now();
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        const easeProgress = d3.easeCubicInOut(progress);
+        
+        data.forEach(d => {
+            d.currentX = d.startX + (d.originalX - d.startX) * easeProgress;
+            d.currentY = d.startY + (d.originalY - d.startY) * easeProgress;
+            d.x = d.currentX;
+            d.y = d.currentY;
+        });
+
+        nodes
+            .attr("cx", d => d.currentX)
+            .attr("cy", d => d.currentY);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Ensure final positions are exact
+            data.forEach(d => {
+                d.x = d.originalX;
+                d.y = d.originalY;
+            });
+            nodes
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+                
+            setupSimulation();
+            document.querySelector('.message').classList.add('fade');
+        }
+    }
+    
+    animate();
+}
+
+function setupSimulation() {
+    if (simulation) return;
+
+    simulation = d3.forceSimulation(data)
+        .velocityDecay(0.7)    // Increased to reduce movement
+        .alphaDecay(0.02)      // Increased to settle faster
+        .alpha(0.3)            // Reduced initial energy
+        .force("charge", d3.forceManyBody().strength(-30))
+        .force("collision", d3.forceCollide().radius(d => d.nodeSize * 1.1).strength(1))
+        .force("x", d3.forceX().x(d => d.originalX).strength(0.5))  // Increased to maintain positions
+        .force("y", d3.forceY().y(d => d.originalY).strength(0.5)); // Increased to maintain positions
+
+    simulation.on("tick", () => {
+        nodes
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+    });
+
+    nodes.call(d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended));
+}
+
+function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+}
+
+function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+}
+
+function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+    
+    const node = d3.select(event.sourceEvent.target);
+    const startX = d.x;
+    const startY = d.y;
+    
+    const originalX = d.originalX;
+    const originalY = d.originalY;
+    
+    const duration = 1000;
+    const startTime = Date.now();
+    
+    function animate() {
+        const currentTime = Date.now();
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        const easeProgress = d3.easeCubicOut(progress);
+        
+        d.x = startX + (originalX - startX) * easeProgress;
+        d.y = startY + (originalY - startY) * easeProgress;
+        
+        node
+            .attr("cx", d.x)
+            .attr("cy", d.y);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            d.x = originalX;
+            d.y = originalY;
+            node
+                .attr("cx", d.x)
+                .attr("cy", d.y);
+        }
+    }
+    
+    animate();
+}
+
+const zoom = d3.zoom()
+    .scaleExtent([0.1, 4])
+    .on("zoom", (event) => {
+        svg.selectAll("circle")
+            .attr("transform", event.transform);
+    });
+
+svg.call(zoom);
+
+setTimeout(formPattern, 500);
+</script>
+</body>
+</html>
